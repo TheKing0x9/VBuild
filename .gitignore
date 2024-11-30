@@ -1,0 +1,13 @@
+# Lua config files
+.luarc.json
+
+# VBuild generated files
+.vbuild_history
+vbuild.config
+
+# Luastatic generated files
+vbuild.luastatic.c
+vbuild
+
+# Test Directory
+test/
