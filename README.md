@@ -2,7 +2,6 @@
 
 VBuild is a simple build system for Verilog projects. Simple. Fast. Extensible.
 
-
 > VBuild is currently in early alpha, and is not recommended for production use. As the project matures, features can and will break.
 
 ## Installation
@@ -74,9 +73,10 @@ Get started by installing `luarocks` and the required dependencies
 
 ```bash
 sudo apt-get install luarocks
-luarocks install luafilesystem --local
 luarocks install readline --local
 luarocks install argparse --local
+luarocks install luastatic --local
+luarocks install luafilesystem --local
 ```
 
 Next, `LuaJIT` is required to build the executable. Since we need the static library for compiling `VBuild`, build `LuaJIT` by running the following commands:
@@ -103,7 +103,7 @@ This is the first public release of VBuild. The following features are planned f
 
 ### Core
 
-- [ ] Add command line options for VBuild
+- [-] Add command line options for VBuild
 - [ ] Add help for commands
 - [ ] Expose hooks for file changes in the API
 - [ ] Windows Port

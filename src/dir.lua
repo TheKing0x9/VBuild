@@ -10,9 +10,18 @@ local function escape_path(path)
     return path .. '/'
 end
 
+local function isdir(t)
+    return getmetatable(t) == dir
+end
+
 local home = escape_path(os.getenv('HOME'))
 
 function dir:new(path, relative)
+    if isdir(path) then
+        self.path = path.path
+        return self.path
+    end
+
     if relative then
         self.path = escape_path(lfs.currentdir()) .. path
     else
@@ -22,7 +31,7 @@ function dir:new(path, relative)
 end
 
 function dir:join(path)
-    self.path = self.path .. path
+    self.path = escape_path(self.path) .. path
     return self
 end
 
