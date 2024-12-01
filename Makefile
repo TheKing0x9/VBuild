@@ -16,7 +16,7 @@ vbuild: $(sources) $(modules)
 copy: vbuild
 	mv -f vbuild ./test/vbuild
 
-run: copy ./test/vbuild
+run: $(or $(wildcard ./test/vbuild), copy)
 	cd test && ./vbuild
 
 run_command: ./test/vbuild

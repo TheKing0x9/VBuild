@@ -25,7 +25,7 @@ function dir:new(path, relative)
     if relative then
         self.path = escape_path(lfs.currentdir()) .. path
     else
-        self.path = home .. path
+        self.path = path
     end
     return self.path
 end

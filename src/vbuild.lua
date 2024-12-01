@@ -229,6 +229,7 @@ local function main()
 
     parser:flag('--version', 'Print version')
     parser:flag('-v --verbose', 'Verbose output', false)
+
     parser:option('-c --config', 'Configuration file', 'vbuild.config')
     parser:option('-f --file', 'File containing list of commands to run')
     parser:flag('-q --quit', 'Quit after running the commands', false)
@@ -293,6 +294,7 @@ local function main()
         if err then print(err) end
     end
 
+    -- commands file
     if args.file then
         local file, err = io.open(dir(args.file, true).path, 'r')
         if file == nil then
@@ -343,15 +345,15 @@ local function main()
                 local files = from_tb and testbenches or files
 
                 local filename = ffi.string(event.name)
-                local path = watched[event.wd] .. filename
+                local path = dir(watched[event.wd]):join(filename)
                 local _, stem, ext = utils.split_path(filename)
                 local is_directory = bit.band(event.mask, inotify.IN_ISDIR) == inotify.IN_ISDIR
 
                 if bit.band(event.mask, inotify.IN_CREATE) == inotify.IN_CREATE then
                     if is_directory then
-                        scan(dir(path, true))
+                        scan(fd, dir(path, true), watched, files)
                     elseif ext == ".v" then
-                        files[stem] = path
+                        files[stem] = path.path
                     end
                 elseif bit.band(event.mask, inotify.IN_DELETE) == inotify.IN_DELETE then
                     if is_directory then
