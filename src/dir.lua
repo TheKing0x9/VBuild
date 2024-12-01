@@ -44,6 +44,10 @@ function dir:__tostring()
     return self.path
 end
 
+function dir:__add(path)
+    return dir(self.path):join(path)
+end
+
 return setmetatable(dir, {
     __call = function(_, ...)
         local obj = setmetatable({}, dir)

@@ -13,9 +13,14 @@ all: vbuild
 vbuild: $(sources) $(modules)
 	$(CC) $(entry) $(sources) $(modules) $(LUAJIT_LIB) -I$(LUAJIT_HEADERS)
 
-run: vbuild
+copy: vbuild
 	mv -f vbuild ./test/vbuild
+
+run: copy ./test/vbuild
 	cd test && ./vbuild
+
+run_command: ./test/vbuild
+	cd test && ./vbuild -q -f commands
 
 .PHONY: clean
 clean:

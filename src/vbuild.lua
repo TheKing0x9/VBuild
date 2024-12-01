@@ -48,7 +48,8 @@ local exit_loop           = false
 toml.strict               = true
 
 local files               = {}
-local print_queue         = {}
+local
+_queue                    = {}
 local watched_dirs        = {}
 local testbenches         = {}
 local parsed_config       = {}
@@ -147,12 +148,10 @@ end
 -- \__|  \__|\________|\__|  \__|\_______/ \________|\______|\__|  \__|\________|
 --------------------------------------------------------------------------------
 
-local function linehandler(str)
+local function execute_command(str)
     if str == nil or str == '' then
         return
     end
-
-    readline.add_history(str)
 
     local commands = utils.split(str, '&&')
     for _, v in ipairs(commands) do
@@ -167,6 +166,15 @@ local function linehandler(str)
             print(err); break;
         end
     end
+end
+
+local function linehandler(str)
+    if str == nil or str == '' then
+        return
+    end
+
+    readline.add_history(str)
+    execute_command(str)
 end
 
 --------------------------------------------------------------------------------
@@ -222,12 +230,19 @@ local function main()
     parser:flag('--version', 'Print version')
     parser:flag('-v --verbose', 'Verbose output', false)
     parser:option('-c --config', 'Configuration file', 'vbuild.config')
+    parser:option('-f --file', 'File containing list of commands to run')
+    parser:flag('-q --quit', 'Quit after running the commands', false)
 
     local args = parser:parse()
 
     if args.version then
         print(vbuild.__version)
         os.exit(0)
+    end
+
+    if args.quit and not args.file then
+        print("Error: --quit flag requires --file flag")
+        os.exit(1)
     end
 
     -- read configuration file
@@ -250,6 +265,7 @@ local function main()
     signal.signal(signal.SIGINT, function()
         io.stdout:write("Ctrl-C (SIGINT) quit is disabled. Use exit command to exit.")
         io.stdout:flush()
+        os.exit()
     end)
 
     -- register important commands
@@ -262,13 +278,6 @@ local function main()
         exit_loop = true
         readline.handler_remove()
     end)
-
-    -- initialize readline library
-    readline.set_options({ histfile = lfs.currentdir() .. '/.vbuild_history', ignoredups = true })
-    readline.set_readline_name("vbuild")
-
-    local reserved_words = command.get_keys()
-    readline.set_complete_list(reserved_words)
 
     -- initialize inotify
     local fd = inotify.init()
@@ -284,6 +293,19 @@ local function main()
         if err then print(err) end
     end
 
+    if args.file then
+        local file, err = io.open(dir(args.file, true).path, 'r')
+        if file == nil then
+            print("Error: File " .. args.file .. " not found")
+            os.exit(1)
+        end
+
+        for line in file:lines() do
+            execute_command(line)
+            print()
+        end
+    end
+
     local fds = {
         [0] = { events = { IN = true } },
         [fd] = { events = { IN = true } }
@@ -292,7 +314,18 @@ local function main()
     local buffer_size = 1024 * (ffi.sizeof("struct inotify_event") + 16)
     local buffer = ffi.new("char[?]", buffer_size)
 
+    local reserved_words = command.get_keys()
+    if args.file and args.quit then
+        goto cleanup
+    end
+
+    -- initialize readline library
+    readline.set_options({ histfile = lfs.currentdir() .. '/.vbuild_history', ignoredups = true })
+    readline.set_readline_name("vbuild")
+
+    readline.set_complete_list(reserved_words)
     readline.handler_install("vbuild> ", linehandler)
+
     while exit_loop == false do
         poll(fds, -1)
         if fds[0].revents and fds[0].revents.IN then
@@ -332,6 +365,8 @@ local function main()
             end
         end
     end
+
+    ::cleanup::
 
     -- cleanup
     readline.save_history()

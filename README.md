@@ -104,6 +104,7 @@ This is the first public release of VBuild. The following features are planned f
 ### Core
 
 - [-] Add command line options for VBuild
+- [-] Add support for running commands from a file
 - [ ] Add help for commands
 - [ ] Expose hooks for file changes in the API
 - [ ] Windows Port
