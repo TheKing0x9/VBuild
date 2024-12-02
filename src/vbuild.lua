@@ -108,21 +108,26 @@ global({
 local function load_plugins()
     local autoload = config.Plugins.autoload
     local path = config.Plugins.path
+    local plugins = {}
 
     if parsed_config and parsed_config.Plugins then
         autoload = (parsed_config.Plugins.autoload == nil) and autoload or parsed_config.Plugins.autoload
         path = parsed_config.Plugins.path == nil and path or parsed_config.Plugins.path
     end
 
-    if not autoload then return end
+    package.path = './' .. path .. '/?/init.lua;' .. package.path .. "\n"
+
+    if not autoload then return plugins end
 
     for file in list_dir(path) do
         if file ~= "." and file ~= ".." then
             local _, stem, _ = utils.split_path(file)
             local module = string.gsub(path, '[/]+', '.') .. '.' .. stem
-            require(module)
+            table.insert(plugins, require(module))
         end
     end
+
+    return plugins
 end
 
 local function read_config_file(file)
@@ -251,10 +256,14 @@ local function main()
     parsed_config = read_config_file(config_file)
 
     -- initialize plugins
-    local ok, err = pcall(load_plugins)
+    local ok, plugins = pcall(load_plugins)
     if not ok then
+        -- in this case plugins is the error message
         print("Error loading plugins ... ")
-        print(err)
+        print(plugins)
+        -- reset plugins to nil so that checking plugins == nil actually tells
+        -- if there was an error loading plugins
+        plugins = nil
     end
 
     -- merge configurations
@@ -268,6 +277,15 @@ local function main()
         io.stdout:flush()
         os.exit()
     end)
+
+    if plugins then
+        for i = 1, #plugins do
+            local plugin = plugins[i]
+            if type(plugin) == "table" and plugin.init then
+                plugin.init()
+            end
+        end
+    end
 
     -- register important commands
     command.register('clear', function()
@@ -315,7 +333,7 @@ local function main()
 
     local buffer_size = 1024 * (ffi.sizeof("struct inotify_event") + 16)
     local buffer = ffi.new("char[?]", buffer_size)
-
+    local i = 0
     local reserved_words = command.get_keys()
     if args.file and args.quit then
         goto cleanup
@@ -327,9 +345,8 @@ local function main()
 
     readline.set_complete_list(reserved_words)
     readline.handler_install("vbuild> ", linehandler)
-
     while exit_loop == false do
-        poll(fds, -1)
+        local events = poll(fds, -1)
         if fds[0].revents and fds[0].revents.IN then
             readline.read_char() -- only if there's something to be read
         elseif fds[fd].revents and fds[fd].revents.IN then
@@ -337,7 +354,6 @@ local function main()
             local i = 0
             while i < len do
                 local event = ffi.cast("struct inotify_event *", buffer + i)
-                --    printd(event.wd, string.format("0x%x", event.mask), event.cookie, ffi.string(event.name))
                 i = i + ffi.sizeof("struct inotify_event") + event.len
 
                 local from_tb = watched_dirs[event.wd] == nil
