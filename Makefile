@@ -24,6 +24,11 @@ rerun: $(or $(wildcard ./test/vbuild), copy)
 run_command: ./test/vbuild
 	cd test && ./vbuild -q -f commands
 
+.PHONY: test
+test:
+	@echo "Running unit tests..."
+	luajit tests/init.lua
+
 .PHONY: clean
 clean:
 	@if [ -f vbuild ]; then rm vbuild; fi

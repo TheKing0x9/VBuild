@@ -31,8 +31,10 @@ local poll     = require 'posix.poll'.poll
 local toml     = require 'modules.toml'
 local inspect  = require 'modules.inspect'
 
+local term     = require "src.term"
 local utils    = require 'src.utils'
 local dir      = require 'src.dir'
+local log      = require 'src.log'.logger
 local config   = require 'src.config'
 local inotify  = require 'src.inotify'
 local command  = require 'src.command'
@@ -124,6 +126,7 @@ local function load_plugins()
             local _, stem, _ = utils.split_path(file)
             local module = string.gsub(path, '[/]+', '.') .. '.' .. stem
             table.insert(plugins, require(module))
+            log:debug("Loaded plugin: " .. module)
         end
     end
 
@@ -133,8 +136,8 @@ end
 local function read_config_file(file)
     file = io.open(file.path, 'r')
     if not file then
-        print('Error reading vbuild.config, Does the file exists?')
-        print('Reverting to default configuration..')
+        log:error('Error reading vbuild.config, Does the file exists?')
+        log:info('Reverting to default configuration..')
     else
         local config = toml.parse(file:read('*a'))
         file:close()
@@ -168,7 +171,7 @@ local function execute_command(str)
         table.remove(s, 1)
         local err = command.execute(cmd, s)
         if err then
-            print(err); break;
+            log:error(err); break;
         end
     end
 end
@@ -214,7 +217,7 @@ local function scan(fd, path, watched, files, max_depth, depth)
             end
         end
     end
-    print('Adding watch to ' .. path.path)
+    log:debug('Adding watch to ' .. path.path)
 end
 
 --------------------------------------------------------------------------------
@@ -246,21 +249,24 @@ local function main()
         os.exit(0)
     end
 
+    log:addfile('.vbuild.log', log.levels.TRACE, "$LEVEL $DATE $LINEINFO $MSG")
+    log:addfile(io.stdout, args.verbose and log.levels.TRACE or log.levels.INFO, "$LEVEL $MSG")
+
     if args.quit and not args.file then
-        print("Error: --quit flag requires --file flag")
+        log:error("Error: --quit flag requires --file flag")
         os.exit(1)
     end
 
     -- read configuration file
-    local config_file = dir(args.config, true)
+    local config_file = dir(args.config):abs()
     parsed_config = read_config_file(config_file)
 
     -- initialize plugins
     local ok, plugins = pcall(load_plugins)
     if not ok then
         -- in this case plugins is the error message
-        print("Error loading plugins ... ")
-        print(plugins)
+        log:error("Error loading plugins ... ")
+        log:info(plugins)
         -- reset plugins to nil so that checking plugins == nil actually tells
         -- if there was an error loading plugins
         plugins = nil
@@ -273,8 +279,7 @@ local function main()
 
     -- stop SIGINT from killing the process.
     signal.signal(signal.SIGINT, function()
-        io.stdout:write("Ctrl-C (SIGINT) quit is disabled. Use exit command to exit.")
-        io.stdout:flush()
+        log:info("Ctrl-C (SIGINT) quit is disabled. Use exit command to exit.")
         os.exit()
     end)
 
@@ -289,7 +294,8 @@ local function main()
 
     -- register important commands
     command.register('clear', function()
-        io.stdout:write('\27[2J', '\27[H')
+        term.clear()
+        term.cursor.jump(1, 1)
         io.stdout:flush()
     end)
 
@@ -303,26 +309,25 @@ local function main()
 
     -- scan directories
     for _, v in ipairs(config.Sources.source_dirs) do
-        local ok, err = pcall(scan, fd, dir(v, true), watched_dirs, files)
-        if err then print(err) end
+        local ok, err = pcall(scan, fd, dir(v):abs(), watched_dirs, files)
+        if err then log:error(err) end
     end
 
     for _, v in ipairs(config.Sources.testbench_dirs) do
-        local ok, err = pcall(scan, fd, dir(v, true), watched_testbenches, testbenches)
-        if err then print(err) end
+        local ok, err = pcall(scan, fd, dir(v):abs(), watched_testbenches, testbenches)
+        if err then log:error(err) end
     end
 
     -- commands file
     if args.file then
-        local file, err = io.open(dir(args.file, true).path, 'r')
+        local file, err = io.open(dir(args.file).path, 'r')
         if file == nil then
-            print("Error: File " .. args.file .. " not found")
+            log:error("Error: File " .. args.file .. " not found")
             os.exit(1)
         end
 
         for line in file:lines() do
             execute_command(line)
-            print()
         end
     end
 
@@ -333,7 +338,6 @@ local function main()
 
     local buffer_size = 1024 * (ffi.sizeof("struct inotify_event") + 16)
     local buffer = ffi.new("char[?]", buffer_size)
-    local i = 0
     local reserved_words = command.get_keys()
     if args.file and args.quit then
         goto cleanup
@@ -361,13 +365,13 @@ local function main()
                 local files = from_tb and testbenches or files
 
                 local filename = ffi.string(event.name)
-                local path = dir(watched[event.wd]):join(filename)
+                local path = dir(watched[event.wd]):join(filename):abs()
                 local _, stem, ext = utils.split_path(filename)
                 local is_directory = bit.band(event.mask, inotify.IN_ISDIR) == inotify.IN_ISDIR
 
                 if bit.band(event.mask, inotify.IN_CREATE) == inotify.IN_CREATE then
                     if is_directory then
-                        scan(fd, dir(path, true), watched, files)
+                        scan(fd, dir(path), watched, files)
                     elseif ext == ".v" then
                         files[stem] = path.path
                     end
@@ -400,6 +404,9 @@ local function main()
     for k, _ in pairs(watched_testbenches) do
         inotify.rm_watch(fd, k)
     end
+
+    -- close logger
+    log:deinit()
 
     -- no silly % symbol at the end of the prompt
     io.stdout:write()
